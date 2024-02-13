@@ -57,7 +57,7 @@ interface OutputFormat {
   <div>
   <div class="header-container">
     <p class="available-nodes-heading">Available nodes:</p>
-    <button class="refreshbutton" (click)="refreshNodeDescriptions()">Get Latest Audit</button>
+    <button class="refreshbutton" (click)="refreshNodeDescriptions()">Refresh Audit</button>
   </div>
   <div class="nodes-display">
     <ul>
@@ -380,7 +380,7 @@ export class AppComponent implements AfterViewInit{
   outputAvailable: boolean = false;
 
 
-  constructor() {
+constructor() {
     GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.mjs';
     this.nodeScale.valueChanges.pipe(
       debounceTime(300), 
@@ -391,7 +391,7 @@ export class AppComponent implements AfterViewInit{
     this.setupJsonInputChangeSubscription();
   }
 
-  ngAfterViewInit(): void {
+ngAfterViewInit(): void {
     const savedPdfUrl = sessionStorage.getItem('pdfUrl');
     if (savedPdfUrl) {
       this.pdfUrl = savedPdfUrl;
@@ -402,9 +402,8 @@ export class AppComponent implements AfterViewInit{
     this.toggleJoystickVisibility();
   }
 
-
   //CREATION AND LOADING of nodes and pdf
-  loadAndRenderPdf(url: string): void {
+loadAndRenderPdf(url: string): void {
     //This method loads the pdf on every url change
     if (!url) {
       console.error('PDF URL is not set.');
@@ -434,14 +433,16 @@ export class AppComponent implements AfterViewInit{
         });
       }else{
           console.error('Failed to get 2D context');
+          alert("error loading pdf, please recheck the pdf url");
       }
       });
     }).catch(error => {
       console.error('Error loading PDF:', error);
+      alert("error loading pdf");
     });
   }
 
-  createDraggableNode(node: Node, position: Position, index:any): void {
+createDraggableNode(node: Node, position: Position, index:any): void {
     //creates the div for each node that needs to be dragged
     if (!this.pdfCanvas || !this.pdfCanvas.nativeElement) {
       console.error('Canvas is not initialized yet.');
@@ -478,7 +479,7 @@ export class AppComponent implements AfterViewInit{
   }
   }
 
-  makeNodeDraggable(element: HTMLElement, node: NodeDetails, index:number): void {
+makeNodeDraggable(element: HTMLElement, node: NodeDetails, index:number): void {
 
     const canvasRect = this.pdfCanvas.nativeElement.getBoundingClientRect();
   interact(element).draggable({
@@ -587,6 +588,7 @@ parseAndExtractNodes(json: any) {
     this.showOutputContainer();
   } catch (error) {
     console.error('Invalid JSON input', error);
+    alert("INVALID JSON");
     this.outputAvailable = false;
     this.hideOutputContainer();
   }
@@ -642,6 +644,11 @@ moveNode(direction: string): void {
 
   const newX = this.lastNodePosition.x + dx;
   const newY = this.lastNodePosition.y + dy;
+
+  if(newX < 0 || newY < 0){
+    alert("node is overflowing the bounds");
+    return;
+  }
 
 this.updateNodePosition(this.lastInteractedNodeKey, newX, newY, this.lastInteractedIndex);
 this.lastNodePosition = { x: newX, y: newY };
@@ -734,6 +741,7 @@ setupJsonInputChangeSubscription(): void {
           try {
             resolve(JSON.parse(jsonString));
           } catch (e) {
+            alert("INAVLID JSON, please check again");
             resolve(null); 
           }
         });
