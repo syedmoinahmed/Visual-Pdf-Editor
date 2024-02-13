@@ -1,5 +1,6 @@
 import { splitVendorChunkPlugin, defineConfig } from 'vite';
 import { dependencies } from './package.json';
+import topLevelAwait from "vite-plugin-top-level-await";
 
 function renderChunks(deps) {
   let chunks = {};
@@ -11,7 +12,7 @@ function renderChunks(deps) {
 }
 
 export default defineConfig({
-    plugins: [splitVendorChunkPlugin()],
+    plugins: [splitVendorChunkPlugin(), topLevelAwait()],
     build: {
         sourcemap: false,
         rollupOptions: {
