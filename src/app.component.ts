@@ -68,7 +68,9 @@ interface OutputFormat {
   </div>
 
   <div class="config-container">
+  <div class="centered-heading">
     <h2>Visual PDF Editor</h2>
+</div>
   <div class="output-container" [class.hidden]="!outputAvailable">
   <label class="available-nodes-heading"> OUTPUT: </label>
   <div class="button-container">
@@ -187,8 +189,7 @@ interface OutputFormat {
 }
 
 h2 {
-  margin-bottom: 15px;
-  color: #4CAF50;
+  color: black;
   font-size: 24px;
 }
 
@@ -296,6 +297,16 @@ textarea {
   transition: background-color 0.3s ease;
 }
 
+.centered-heading {
+  text-align: center;
+  background-color: #cbf7c7; 
+  color: white;
+  padding: 10px 0;
+  margin-bottom: 20px;
+  width: 100%;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
 
 
 .scale-control {
@@ -371,54 +382,16 @@ export class AppComponent implements AfterViewInit{
 
   constructor() {
     GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.mjs';
-
     this.nodeScale.valueChanges.pipe(
       debounceTime(300), 
       distinctUntilChanged() 
     ).subscribe(newValue => {
       console.log('New nodeScale value:', newValue);
     });
-
     this.setupJsonInputChangeSubscription();
   }
 
-
-  clearExistingNodes(): void {
-    document.querySelectorAll('.draggable-node').forEach(node => node.remove());
-  }
-  
-  onJsonInputChange(event: Event): void {
-    const input = (event.target as HTMLInputElement).value;
-    this.jsonInputChange.next(input.trim());
-  }
-
-  private setupJsonInputChangeSubscription(): void {
-    this.jsonInputChange.pipe(
-      debounceTime(500),
-      distinctUntilChanged(),
-      switchMap(jsonString => {
-        return new Promise(resolve => {
-          try {
-            resolve(JSON.parse(jsonString));
-          } catch (e) {
-            resolve(null); 
-          }
-        });
-      }),
-      catchError(err => {
-        console.error('Error processing input', err);
-        return of(null);
-      })
-    ).subscribe(json => {
-      if (json) {
-        this.clearExistingNodes();
-        this.generateNodes(json);
-      }
-    });
-  }
-
   ngAfterViewInit(): void {
-    //this.loadAndRenderPdf();
     const savedPdfUrl = sessionStorage.getItem('pdfUrl');
     if (savedPdfUrl) {
       this.pdfUrl = savedPdfUrl;
@@ -430,59 +403,9 @@ export class AppComponent implements AfterViewInit{
   }
 
 
-  generateNodes(json: any): void {
-    setTimeout(() => this.parseAndExtractNodes(json), 0);
-  }
-
-
-  onPdfUrlChange(newUrl: string): void {
-    this.pdfUrl = newUrl;
-    this.pdfUrlChange.next(this.pdfUrl);
-    sessionStorage.setItem('pdfUrl', this.pdfUrl);
-    this.loadAndRenderPdf(this.pdfUrl);
-  }
-
-  parseAndExtractNodes(json: any) {
-    try {
-      
-      const nodes: Node[] = json.nodes || [];
-      this.allNodes = nodes; 
-      nodes.forEach((node) => {
-        if (node.position) {
-          this.createDraggableNode(node, node.position, -1);
-          this.nodeDescriptions.push(`${node.key} at x=${node.position.x}, y=${node.position.y}`);
-        } else if (node.positions) {
-          node.positions.forEach((position, index) => {
-            this.createDraggableNode(node, position, index);
-            this.nodeDescriptions.push(`${node.key} ${index + 1} at x=${position.x}, y=${position.y}`);
-          });
-        }
-      });
-      this.outputAvailable = true;
-      console.log("this was called", this.outputAvailable);
-      this.showOutputContainer();
-    } catch (error) {
-      console.error('Invalid JSON input', error);
-      this.outputAvailable = false;
-      this.hideOutputContainer();
-    }
-  }
-
-  showOutputContainer(): void {
-    const outputContainer = document.querySelector('.output-container');
-    if (outputContainer) {
-      outputContainer.classList.remove('hidden');
-    }
-  }
-
-  hideOutputContainer(): void {
-    const outputContainer = document.querySelector('.output-container');
-    if (outputContainer) {
-      outputContainer.classList.add('hidden');
-    }
-  }
-
+  //CREATION AND LOADING of nodes and pdf
   loadAndRenderPdf(url: string): void {
+    //This method loads the pdf on every url change
     if (!url) {
       console.error('PDF URL is not set.');
       return;
@@ -507,7 +430,6 @@ export class AppComponent implements AfterViewInit{
           viewport: viewport
         };
         page.render(renderContext).promise.then(() => {
-          // this.afterPdfRendered();
           console.log("PDF LOADED SUCCESSFULLY");
         });
       }else{
@@ -519,17 +441,12 @@ export class AppComponent implements AfterViewInit{
     });
   }
 
-  // afterPdfRendered(): void {
-  //   this.parseAndExtractNodes();
-  // }
-
   createDraggableNode(node: Node, position: Position, index:any): void {
+    //creates the div for each node that needs to be dragged
     if (!this.pdfCanvas || !this.pdfCanvas.nativeElement) {
       console.error('Canvas is not initialized yet.');
       return;
     }
-
-
     const div = document.createElement('div');
     div.textContent = node.key;
     div.className = 'draggable-node';
@@ -563,161 +480,304 @@ export class AppComponent implements AfterViewInit{
 
   makeNodeDraggable(element: HTMLElement, node: NodeDetails, index:number): void {
 
-      const canvasRect = this.pdfCanvas.nativeElement.getBoundingClientRect();
-    interact(element).draggable({
-      inertia: true,
-      modifiers: [
-          interact.modifiers.restrictRect({
-            restriction: {
-              left: canvasRect.left,
-              top: 0,
-              right: Infinity, 
-              bottom: Infinity
-            },
-              endOnly: true
-          })
-      ],
-      listeners: {
-        start: event => {
-          event.target.style.transform = `translate(${0}px, ${0}px)`;
-          this.lastInteractedNodeKey = event.target.getAttribute('data-key');
-          this.lastInteractedIndex = index >= 0 ? index : null;
-          const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
-          if (node) {
-            this.lastNodePosition = node.position ? { ...node.position } : { x: 0, y: 0 };
-          }
-          if(index>=0){
-            this.lastInteractedIndex = parseInt(event.target.getAttribute('data-index')) || null;
-          }else{
-            this.lastInteractedIndex = null;
-          }
-        },
-        move: event => {
-          event.target.style.transform = `translate(${0}px, ${0}px)`;
-          let x = (parseFloat(event.target.getAttribute('data-x')) || 0) + event.dx;
-          let y = (parseFloat(event.target.getAttribute('data-y')) || 0) + event.dy;
-          event.target.style.transform = `translate(${x}px, ${y}px)`;
-          event.target.setAttribute('data-x', x.toString());
-          event.target.setAttribute('data-y', y.toString());
-        },
-
-        end: event => {  
-        const y = event.rect.top;
-        const x = event.rect.left;
-         const key = event.target.getAttribute('data-key');
-         this.onNodeDragEnd(key, x, y);
-         
-         if (key !== null) {
-          const node = this.allNodes.find(n => n.key === key);
-          if (node) {
-            
-            if (node.positions && index >= 0) {
-              node.positions[index] = { x, y };
-              this.movedNodes.set(key, { ...node, positions: [...node.positions] });
-            } else if (node.position || index === -1) {
-              node.position = { x, y };
-              this.movedNodes.set(key, { ...node, position: { x, y } });
-            }
-
-            this.updateDescriptionsAndAudit(key, index, {x, y});
-            this.lastInteractedNodeKey = node.key;
-            this.lastNodePosition = { x, y };
-          }
+    const canvasRect = this.pdfCanvas.nativeElement.getBoundingClientRect();
+  interact(element).draggable({
+    inertia: true,
+    modifiers: [
+        interact.modifiers.restrictRect({
+          restriction: {
+            left: canvasRect.left,
+            top: 0,
+            right: Infinity, 
+            bottom: Infinity
+          },
+            endOnly: true
+        })
+    ],
+    listeners: {
+      start: event => {
+        event.target.style.transform = `translate(${0}px, ${0}px)`;
+        this.lastInteractedNodeKey = event.target.getAttribute('data-key');
+        this.lastInteractedIndex = index >= 0 ? index : null;
+        const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
+        if (node) {
+          this.lastNodePosition = node.position ? { ...node.position } : { x: 0, y: 0 };
         }
-        this.selectNodeForJoystick(key, index, {x,y});
-        this.refreshNodeDescriptions();
-        this.generateOutput(true);
+        if(index>=0){
+          this.lastInteractedIndex = parseInt(event.target.getAttribute('data-index')) || null;
+        }else{
+          this.lastInteractedIndex = null;
+        }
+      },
+      move: event => {
+        event.target.style.transform = `translate(${0}px, ${0}px)`;
+        let x = (parseFloat(event.target.getAttribute('data-x')) || 0) + event.dx;
+        let y = (parseFloat(event.target.getAttribute('data-y')) || 0) + event.dy;
+        event.target.style.transform = `translate(${x}px, ${y}px)`;
+        event.target.setAttribute('data-x', x.toString());
+        event.target.setAttribute('data-y', y.toString());
+      },
+
+      end: event => {  
+      const y = event.rect.top;
+      const x = event.rect.left;
+       const key = event.target.getAttribute('data-key');
+       this.onNodeDragEnd(key, x, y);
+       
+       if (key !== null) {
+        const node = this.allNodes.find(n => n.key === key);
+        if (node) {
+          
+          if (node.positions && index >= 0) {
+            node.positions[index] = { x, y };
+            this.movedNodes.set(key, { ...node, positions: [...node.positions] });
+          } else if (node.position || index === -1) {
+            node.position = { x, y };
+            this.movedNodes.set(key, { ...node, position: { x, y } });
+          }
+
+          this.updateDescriptionsAndAudit(key, index, {x, y});
+          this.lastInteractedNodeKey = node.key;
+          this.lastNodePosition = { x, y };
+        }
       }
+      this.selectNodeForJoystick(key, index, {x,y});
+      this.refreshNodeDescriptions();
+      this.generateOutput(true);
+    }
+    }
+  })
+  .on('tap', event => {
+    const key = event.currentTarget.getAttribute('data-key');
+    this.lastInteractedNodeKey = key;
+    this.lastInteractedIndex = index; 
+    const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
+if (node) {
+  const position = index !== null && node.positions ? node.positions[index] : node.position;
+  if (position) {
+    this.lastNodePosition = { ...position };
+    this.updateJoystickPanel();
+  }
+}
+  });
+}
+
+generateNodes(json: any): void {
+  setTimeout(() => this.parseAndExtractNodes(json), 0);
+}
+
+parseAndExtractNodes(json: any) {
+  try {
+    
+    const nodes: Node[] = json.nodes || [];
+    this.allNodes = nodes; 
+    nodes.forEach((node) => {
+      if (node.position) {
+        this.createDraggableNode(node, node.position, -1);
+        this.nodeDescriptions.push(`${node.key} at x=${node.position.x}, y=${node.position.y}`);
+      } else if (node.positions) {
+        node.positions.forEach((position, index) => {
+          this.createDraggableNode(node, position, index);
+          this.nodeDescriptions.push(`${node.key} ${index + 1} at x=${position.x}, y=${position.y}`);
+        });
       }
-    })
-    .on('tap', event => {
-      const key = event.currentTarget.getAttribute('data-key');
-      this.lastInteractedNodeKey = key;
-      this.lastInteractedIndex = index; 
-      const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
-  if (node) {
-    const position = index !== null && node.positions ? node.positions[index] : node.position;
-    if (position) {
-      this.lastNodePosition = { ...position };
-      this.updateJoystickPanel();
+    });
+    this.outputAvailable = true;
+    console.log("this was called", this.outputAvailable);
+    this.showOutputContainer();
+  } catch (error) {
+    console.error('Invalid JSON input', error);
+    this.outputAvailable = false;
+    this.hideOutputContainer();
+  }
+}
+
+
+//Event Handlers for User Inputs and Actions
+
+onPdfUrlChange(newUrl: string): void {
+    this.pdfUrl = newUrl;
+    this.pdfUrlChange.next(this.pdfUrl);
+    sessionStorage.setItem('pdfUrl', this.pdfUrl);
+    this.loadAndRenderPdf(this.pdfUrl);
+  }
+
+onJsonInputChange(event: Event): void {
+    const input = (event.target as HTMLInputElement).value;
+    this.jsonInputChange.next(input.trim());
+  }
+
+clearExistingNodes(): void {
+    document.querySelectorAll('.draggable-node').forEach(node => node.remove());
+  }
+
+copyToClipboard(): void {
+    this.outputJson.nativeElement.select();
+    document.execCommand('copy');
+    alert("Copied config to the clipboard");
+  }
+
+toggleJoystickVisibility(): void {
+    this.joystickVisible = !this.joystickVisible; // Toggle the state
+    const joystickElement = document.querySelector('.joystick') as HTMLElement;
+    if (joystickElement) {
+      joystickElement.style.display = this.joystickVisible ? 'block' : 'none';
     }
   }
+
+
+//Node Manipulation and Configuration
+
+moveNode(direction: string): void {
+  //This is for joystick movement
+  if (!this.lastInteractedNodeKey || this.lastNodePosition === null) return;
+  const movementAmount = 1 * this.nodeScale.value!;
+  let dx = 0, dy = 0;
+  switch (direction) {
+    case 'up': dy -= movementAmount; break;
+    case 'down': dy += movementAmount; break;
+    case 'left': dx -= movementAmount; break;
+    case 'right': dx += movementAmount; break;
+  }
+
+  const newX = this.lastNodePosition.x + dx;
+  const newY = this.lastNodePosition.y + dy;
+
+this.updateNodePosition(this.lastInteractedNodeKey, newX, newY, this.lastInteractedIndex);
+this.lastNodePosition = { x: newX, y: newY };
+this.updateJoystickPanel();
+const selector = this.lastInteractedIndex !== -1
+? `[data-key='${this.lastInteractedNodeKey}'][data-index='${this.lastInteractedIndex}']`
+: `[data-key='${this.lastInteractedNodeKey}']`;
+  const nodeElement = document.querySelector(selector) as HTMLElement;
+if (nodeElement) {
+  nodeElement.style.transform = 'translate(0px, 0px)';
+  nodeElement.style.left = `${newX}px`;
+  nodeElement.style.top = `${newY}px`;
+  nodeElement.setAttribute('data-x', newX.toString());
+  nodeElement.setAttribute('data-y', newY.toString());
+  this.generateOutput(true);
+}
+
+}
+
+updateNodePosition(key: string, x: number, y: number, index?: number | null): void {
+  const node = this.allNodes.find(n => n.key === key);
+  if (!node) return;
+
+  if (node.positions && index && index !== null && index >= 0) {
+    node.positions[index] = { x, y };
+  } else {
+    node.position = { x, y };
+  }
+  this.movedNodes.set(key, { ...node });
+}
+
+selectNodeForJoystick(key: string, index: number | null, position: Position) {
+  this.lastInteractedNodeKey = key;
+  this.lastInteractedIndex = index;
+  this.lastNodePosition = position;
+  this.updateJoystickPanel();
+}
+
+
+//OUTPUT:
+generateOutput(onlyEdited: boolean): void {
+  let output: OutputFormat = { node_override: {} };
+
+  this.allNodes.forEach(node => {
+    if (onlyEdited && !this.movedNodes.has(node.key)) return;
+
+    const nodeDetail: NodeDetails = {
+      type: node.type,
+      width: node.width,
+      height: node.height,
+      fontSize: node.fontSize,
+    };
+    if (node.positions || this.movedNodes.has(node.key)) {
+      const updatedNode = this.movedNodes.get(node.key);
+      if (updatedNode && updatedNode.positions) {
+        nodeDetail.positions = updatedNode.positions;
+      } else if (updatedNode && updatedNode.position) {
+        nodeDetail.positions = [updatedNode.position];
+      } else if (node.positions) {
+        nodeDetail.positions = [...node.positions];
+      }
+    } else if (node.position) {
+      nodeDetail.position = { ...node.position };
+    }
+
+    output.node_override[node.key] = nodeDetail;
+  });
+
+
+  Object.entries(output.node_override).forEach(([key, detail]) => {
+    if (detail.positions && detail.positions.length === 1) {
+      detail.position = detail.positions[0];
+      delete detail.positions;
+    } else if (detail.positions && detail.positions.length === 0) {
+      delete detail.positions; 
+    }
+  });
+
+  this.outputJson.nativeElement.value = JSON.stringify(output, null, 2);
+};
+
+
+//OTHER UTIL METHODS:
+setupJsonInputChangeSubscription(): void {
+    this.jsonInputChange.pipe(
+      debounceTime(500),
+      distinctUntilChanged(),
+      switchMap(jsonString => {
+        return new Promise(resolve => {
+          try {
+            resolve(JSON.parse(jsonString));
+          } catch (e) {
+            resolve(null); 
+          }
+        });
+      }),
+      catchError(err => {
+        console.error('Error processing input', err);
+        return of(null);
+      })
+    ).subscribe(json => {
+      if (json) {
+        this.clearExistingNodes();
+        this.generateNodes(json);
+      }
     });
   }
 
-  selectNodeForJoystick(key: string, index: number | null, position: Position) {
-    this.lastInteractedNodeKey = key;
-    this.lastInteractedIndex = index;
-    this.lastNodePosition = position;
-    this.updateJoystickPanel();
+showOutputContainer(): void {
+    const outputContainer = document.querySelector('.output-container');
+    if (outputContainer) {
+      outputContainer.classList.remove('hidden');
+    }
   }
 
-  updateJoystickPanel() {
+hideOutputContainer(): void {
+    const outputContainer = document.querySelector('.output-container');
+    if (outputContainer) {
+      outputContainer.classList.add('hidden');
+    }
+  }
+
+updateJoystickPanel() {
     const joystickInfo = document.querySelector('.node-info');
     if (joystickInfo && this.lastNodePosition) {
       joystickInfo.innerHTML = `Last Selected Node: ${this.lastInteractedNodeKey}<br>Position: x=${this.lastNodePosition.x}, y=${this.lastNodePosition.y}`;
     }
   }
 
-  
-
-  onNodeDragEnd(key: string, x: number, y: number): void {
+onNodeDragEnd(key: string, x: number, y: number): void {
     const node = this.allNodes.find(n => n.key === key);
     if (node) {
       this.updateNodePosition(key, x, y);
     }
   }
 
-
-  moveNode(direction: string): void {
-    if (!this.lastInteractedNodeKey || this.lastNodePosition === null) return;
-    
-    const movementAmount = 1 * this.nodeScale.value!;
-    let dx = 0, dy = 0;
-    switch (direction) {
-      case 'up': dy -= movementAmount; break;
-      case 'down': dy += movementAmount; break;
-      case 'left': dx -= movementAmount; break;
-      case 'right': dx += movementAmount; break;
-    }
-  
-    const newX = this.lastNodePosition.x + dx;
-  const newY = this.lastNodePosition.y + dy;
-
-  
-  this.updateNodePosition(this.lastInteractedNodeKey, newX, newY, this.lastInteractedIndex);
-  this.lastNodePosition = { x: newX, y: newY };
-  this.updateJoystickPanel();
-  const selector = this.lastInteractedIndex !== -1
-  ? `[data-key='${this.lastInteractedNodeKey}'][data-index='${this.lastInteractedIndex}']`
-  : `[data-key='${this.lastInteractedNodeKey}']`;
-    const nodeElement = document.querySelector(selector) as HTMLElement;
-  if (nodeElement) {
-    nodeElement.style.transform = 'translate(0px, 0px)';
-    nodeElement.style.left = `${newX}px`;
-    nodeElement.style.top = `${newY}px`;
-    nodeElement.setAttribute('data-x', newX.toString());
-    nodeElement.setAttribute('data-y', newY.toString());
-    this.generateOutput(true);
-  }
-
-  }
-  
-  
-  
-  
-  updateNodePosition(key: string, x: number, y: number, index?: number | null): void {
-    const node = this.allNodes.find(n => n.key === key);
-    if (!node) return;
-  
-    if (node.positions && index && index !== null && index >= 0) {
-      node.positions[index] = { x, y };
-    } else {
-      node.position = { x, y };
-    }
-    this.movedNodes.set(key, { ...node });
-  }
-  
 updateNodeElementPosition(key: string, position: Position, index?: number): void {
   const selector = index !== undefined ? `.draggable-node[data-key='${key}'][data-index='${index}']` : `.draggable-node[data-key='${key}']`;
   const nodeElement = document.querySelector(selector) as HTMLElement;
@@ -731,9 +791,7 @@ updateNodeElementPosition(key: string, position: Position, index?: number): void
   }
 }
 
-
-
-  updateDescriptionsAndAudit(key: string, index: number, newPos: Position) {
+updateDescriptionsAndAudit(key: string, index: number, newPos: Position) {
     const changeDescription = `${key} ${index >= 0 ? index + 1 : ''} at x=${newPos.x}, y=${newPos.y}`;
     this.changeLog.push(changeDescription);
     const descriptionIndex = this.nodeDescriptions.findIndex(desc => desc.includes(`${key} ${index >= 0 ? index + 1 : ''}`));
@@ -744,67 +802,10 @@ updateNodeElementPosition(key: string, position: Position, index?: number): void
     this.refreshNodeDescriptions();
   }
 
-
-  generateOutput(onlyEdited: boolean): void {
-    let output: OutputFormat = { node_override: {} };
-  
-    this.allNodes.forEach(node => {
-      if (onlyEdited && !this.movedNodes.has(node.key)) return;
-  
-      const nodeDetail: NodeDetails = {
-        type: node.type,
-        width: node.width,
-        height: node.height,
-        fontSize: node.fontSize,
-      };
-      if (node.positions || this.movedNodes.has(node.key)) {
-        const updatedNode = this.movedNodes.get(node.key);
-        if (updatedNode && updatedNode.positions) {
-          nodeDetail.positions = updatedNode.positions;
-        } else if (updatedNode && updatedNode.position) {
-          nodeDetail.positions = [updatedNode.position];
-        } else if (node.positions) {
-          nodeDetail.positions = [...node.positions];
-        }
-      } else if (node.position) {
-        nodeDetail.position = { ...node.position };
-      }
-  
-      output.node_override[node.key] = nodeDetail;
-    });
-  
-  
-    Object.entries(output.node_override).forEach(([key, detail]) => {
-      if (detail.positions && detail.positions.length === 1) {
-        detail.position = detail.positions[0];
-        delete detail.positions;
-      } else if (detail.positions && detail.positions.length === 0) {
-        delete detail.positions; 
-      }
-    });
-  
-    this.outputJson.nativeElement.value = JSON.stringify(output, null, 2);
-  };
-  
-  copyToClipboard(): void {
-    this.outputJson.nativeElement.select();
-    document.execCommand('copy');
-    alert("Copied config to the clipboard");
-  }
-
-  refreshNodeDescriptions(): void {
+refreshNodeDescriptions(): void {
     this.nodesWithPositions.forEach(node => {
       const description = `${node.key} at x=${node.position.x}, y=${node.position.y}`;
       this.nodeDescriptions.push(description);
     });
-  }
-
-  toggleJoystickVisibility(): void {
-    this.joystickVisible = !this.joystickVisible; // Toggle the state
-    const joystickElement = document.querySelector('.joystick') as HTMLElement;
-    if (joystickElement) {
-      joystickElement.style.display = this.joystickVisible ? 'block' : 'none';
-    }
-  }
-    
+  } 
 }
