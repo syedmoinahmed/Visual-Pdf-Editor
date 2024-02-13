@@ -3,6 +3,7 @@ import { Component, ElementRef, ViewChild, AfterViewInit, ChangeDetectionStrateg
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ReactiveFormsModule, FormControl } from '@angular/forms';
 import { PDFDocumentProxy, GlobalWorkerOptions, getDocument, PageViewport } from "pdfjs-dist";
 import interact from 'interactjs';
 import { debounceTime, distinctUntilChanged, switchMap, catchError, filter } from 'rxjs/operators';
@@ -47,7 +48,7 @@ interface OutputFormat {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, FormsModule],
+  imports: [CommonModule, RouterOutlet, RouterLink, FormsModule, ReactiveFormsModule],
   template: `
 <div class="page-container">
   <div class="pdf-container">
@@ -56,7 +57,7 @@ interface OutputFormat {
   <div>
   <div class="header-container">
     <p class="available-nodes-heading">Available nodes:</p>
-    <button class="button-small" (click)="refreshNodeDescriptions()">Refresh Node Descriptions</button>
+    <button class="refreshbutton" (click)="refreshNodeDescriptions()">Get Latest Audit</button>
   </div>
   <div class="nodes-display">
     <ul>
@@ -78,8 +79,9 @@ interface OutputFormat {
   <textarea #outputJson class="output-json" readonly></textarea>
 </div>
      <label class="available-nodes-heading"> PDF URL: </label>
-    <input type="text" [(ngModel)]="pdfUrl" (ngModelChange)="onPdfUrlChange()" placeholder="Enter PDF URL">
-    <label> JSON INPUT: </label>
+    <!-- <input type="text" [(ngModel)]="pdfUrl" (ngModelChange)="onPdfUrlChange()" placeholder="Enter PDF URL"> -->
+    <input type="text" [value]="pdfUrl" (input)="onPdfUrlChange($event.target.value)" placeholder="Enter PDF URL">
+    <label class="available-nodes-heading"> JSON INPUT: </label>
     <textarea (input)="onJsonInputChange($event)" placeholder="Paste your JSON config here..."></textarea>
 
 <div class="joystick">
@@ -90,7 +92,7 @@ interface OutputFormat {
         <button (click)="moveNode('left')" class="button-left">Left</button>
         <div class="scale-control">
           
-          <input type="number" [(ngModel)]="nodeScale" min="0.1" max="2" step="0.1">
+        <input type="number" [formControl]="nodeScale" min="0.1" max="2" step="0.1">
         </div>
         <button (click)="moveNode('right')" class="button-right">Right</button>
       </div>
@@ -98,8 +100,8 @@ interface OutputFormat {
     </div>
   </div>
   <div class="node-info">
-    <p>Last Selected Node: <strong> {{lastInteractedNodeKey}} </strong></p>
-    <p>Position: <strong> x={{lastNodePosition?.x}}, y={{lastNodePosition?.y}} </strong></p>
+    <p>Selected Node: <strong> {{lastInteractedNodeKey}} </strong></p>
+    <p>POS: <strong> x={{lastNodePosition?.x}}, y={{lastNodePosition?.y}} </strong></p>
   </div>
 </div>
 
@@ -113,44 +115,60 @@ interface OutputFormat {
 }
 
 .config-container {
-    width: 40%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 4px;
-  }
-
+  width: 40%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 20px;
+  gap: 10px;
+  background-color: #f2f2f2;
+  box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+  transition: 0.3s;
+}
 .pdf-container {
   width: 60%;
 }
 .output-container {
-    width: 100%; 
-    padding: 2px;
-    margin-top: 10px;
-  }
+  width: 100%;
+  padding: 10px;
+  margin-top: 20px;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+  transition: all 0.3s cubic-bezier(.25,.8,.25,1);
+}
 
 .button-container {
-    display: flex;
-    justify-content: flex-end; /* Align buttons to the right */
-    margin-bottom: 10px; /* Add space below the button container */
-  }
-
-
-.button-small:hover {
-  background-color: #0056b3;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  margin-bottom: 10px;
 }
 
 .button-small {
-  padding: 5px 10px;
-  margin-left: 10px;
-  font-size: 12px;
-  background-color: #007bff;
+  padding: 8px 15px;
+  font-size: 14px;
+  background-color: #4CAF50;
   color: white;
   border: none;
-  max-width: 240px;
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
   transition: background-color 0.3s ease;
+}
+
+.refreshbutton{
+  padding: 8px 15px;
+  font-size: 12px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  max-width:140px;
+  transition: background-color 0.3s ease;
+}
+
+.button-small:hover {
+  background-color: #45a049;
 }
 
 .header-container {
@@ -158,19 +176,29 @@ interface OutputFormat {
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  margin-top: 20px;
+  margin-top:60px;
 }
 
-.available-nodes-heading {
-  margin: 0; 
-  font-size: 16px; 
+.available-nodes-heading, h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
 }
 
-.config-container {
-  width: 40%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+h2 {
+  margin-bottom: 15px;
+  color: #4CAF50;
+  font-size: 24px;
+}
+
+textarea, input[type="text"], .nodes-display {
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
 }
 
 textarea, input[type="text"], .nodes-display, button {
@@ -184,9 +212,6 @@ textarea, input[type="text"], .nodes-display, button {
   align-self: start; 
 }
 
-.nodes-display ul {
-  text-align: center; 
-}
 
 button {
   margin: 2px;
@@ -228,11 +253,11 @@ textarea {
 }
 
 .nodes-display li {
-  background-color: #f0f0f0; 
-  padding: 5px 10px; 
-  border-radius: 5px; 
-  border: 1px solid #ccc; 
-  width: fit-content;
+  background-color: #f9f9f9;
+  padding: 2px;
+  margin: 2px 0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
 }
 
 .joystick {
@@ -240,12 +265,10 @@ textarea {
   bottom: 20px;
   right: 20px;
   padding: 20px;
-  background-color: #f0f0f0;
-  border: 2px solid #ccc;
+  background-color: #ffffff;
+  border: 2px solid #ddd;
   border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.18), 0 2px 3px rgba(0,0,0,0.26);
   z-index: 1000;
 }
 
@@ -273,9 +296,7 @@ textarea {
   transition: background-color 0.3s ease;
 }
 
-.button-up, .button-down {
-  width: 100%;
-}
+
 
 .scale-control {
   display: flex;
@@ -289,19 +310,16 @@ textarea {
 }
 
 .scale-control input[type="number"] {
-  width: 60px;
-  padding: 5px;
-  text-align: center;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 
 .node-info {
-  background-color: #e9ecef;
-  padding: 10px;
   margin-top: 20px;
+  padding: 10px;
+  background-color: #f9f9f9;
   border-radius: 5px;
-  border: 1px solid #ccc;
-  width: 100%;
-  text-align: center;
+  border: 1px solid #ddd;
 }
 
 .hidden {
@@ -314,6 +332,7 @@ textarea {
     box-sizing: border-box; /* Include padding and border in the element's width and height */
     height: 300px;
     resize: vertical;
+    font-family: monospace;
   }
 
     `,
@@ -323,7 +342,6 @@ textarea {
 export class AppComponent implements AfterViewInit{
   @ViewChild('pdfCanvas', { static: true }) pdfCanvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('contextMenu') contextMenu!: ElementRef;
-  //pdfUrl: string = 'https://storage.googleapis.com/shipthis-media/base/BLIndiaStandard.pdf';
   //pdfUrl: string = 'https://raw.githubusercontent.com/vinodnimbalkar/svelte-pdf/369db2f9edbf5ab8c87184193e1404340729bb3a/public/sample.pdf';
   pdfUrl: string = 'https://storage.googleapis.com/shipthis-media/base/379f6d0d40b6c08888475be4c0969e6e.pdf';
   jsonInput: string = '';
@@ -343,7 +361,7 @@ export class AppComponent implements AfterViewInit{
   changeLog: string[] = [];
   lastInteractedNodeKey: string | null = null;
   lastNodePosition: Position | null = null;
-  nodeScale: number = 0.5;
+  nodeScale = new FormControl(0.5);
   lastInteractedIndex: number | null = null;
   private pdfUrlChange = new Subject<string>();
   private jsonInputChange = new Subject<string>();
@@ -353,11 +371,12 @@ export class AppComponent implements AfterViewInit{
 
   constructor() {
     GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.mjs';
-    this.pdfUrlChange.pipe(
-      debounceTime(500), // Adjust debounce time as needed
-      distinctUntilChanged()
-    ).subscribe(() => {
-      this.loadAndRenderPdf();
+
+    this.nodeScale.valueChanges.pipe(
+      debounceTime(300), 
+      distinctUntilChanged() 
+    ).subscribe(newValue => {
+      console.log('New nodeScale value:', newValue);
     });
 
     this.setupJsonInputChangeSubscription();
@@ -403,9 +422,9 @@ export class AppComponent implements AfterViewInit{
     const savedPdfUrl = sessionStorage.getItem('pdfUrl');
     if (savedPdfUrl) {
       this.pdfUrl = savedPdfUrl;
-      this.loadAndRenderPdf();
+      this.loadAndRenderPdf(this.pdfUrl);
     } else {
-      this.loadAndRenderPdf();
+      this.loadAndRenderPdf(this.pdfUrl);
     }
     this.toggleJoystickVisibility();
   }
@@ -416,9 +435,11 @@ export class AppComponent implements AfterViewInit{
   }
 
 
-  onPdfUrlChange(): void {
+  onPdfUrlChange(newUrl: string): void {
+    this.pdfUrl = newUrl;
     this.pdfUrlChange.next(this.pdfUrl);
     sessionStorage.setItem('pdfUrl', this.pdfUrl);
+    this.loadAndRenderPdf(this.pdfUrl);
   }
 
   parseAndExtractNodes(json: any) {
@@ -461,10 +482,12 @@ export class AppComponent implements AfterViewInit{
     }
   }
 
-  loadAndRenderPdf(): void {
-    if (!this.pdfUrl) return;
-  
-    const loadingTask = getDocument(this.pdfUrl);
+  loadAndRenderPdf(url: string): void {
+    if (!url) {
+      console.error('PDF URL is not set.');
+      return;
+    }
+    const loadingTask = getDocument(url);
     loadingTask.promise.then(pdf => {
       pdf.getPage(1).then(page => {
         const viewport = page.getViewport({ scale: 1.0 });
@@ -649,7 +672,7 @@ export class AppComponent implements AfterViewInit{
   moveNode(direction: string): void {
     if (!this.lastInteractedNodeKey || this.lastNodePosition === null) return;
     
-    const movementAmount = 1* this.nodeScale;
+    const movementAmount = 1 * this.nodeScale.value!;
     let dx = 0, dy = 0;
     switch (direction) {
       case 'up': dy -= movementAmount; break;
@@ -679,6 +702,7 @@ export class AppComponent implements AfterViewInit{
   }
 
   }
+  
   
   
   
