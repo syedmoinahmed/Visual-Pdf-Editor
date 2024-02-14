@@ -76,18 +76,21 @@ interface OutputFormat {
   <div class="button-container">
     <button (click)="copyToClipboard()" class="button-small">Copy To Clipboard</button>
     <button (click)="generateOutput(false)" class="button-small">All Nodes Config</button>
-    <button (click)="toggleJoystickVisibility()"  class="button-small">{{ joystickVisible ? 'Hide' : 'Show' }} Joystick</button>
+    <button (click)="toggleJoystickVisibility()"  class="button-small">{{ joystickVisible ? 'Hide' : 'Show' }} Control Panel</button>
   </div>
   <textarea #outputJson class="output-json" readonly></textarea>
 </div>
      <label class="available-nodes-heading"> PDF URL: </label>
-    <!-- <input type="text" [(ngModel)]="pdfUrl" (ngModelChange)="onPdfUrlChange()" placeholder="Enter PDF URL"> -->
     <input type="text" [value]="pdfUrl" (input)="onPdfUrlChange($event.target.value)" placeholder="Enter PDF URL">
     <label class="available-nodes-heading"> JSON INPUT: </label>
     <textarea (input)="onJsonInputChange($event)" placeholder="Paste your JSON config here..."></textarea>
 
 <div class="joystick">
+<button class="close-button" (click)="toggleJoystickVisibility()">Close Control Panel</button>
   <div class="joystick-controls">
+    <div class="direction-controls">
+    <div class="joystick-section">
+    <h4>Directions:</h4>
     <div class="direction-controls">
       <button (click)="moveNode('up')" class="button-up">Up</button>
       <div class="horizontal-controls">
@@ -100,8 +103,35 @@ interface OutputFormat {
       </div>
       <button (click)="moveNode('down')" class="button-down">Down</button>
     </div>
+    </div>
+</div>
   </div>
-  <div class="node-info">
+  <div class="dimension-controls">
+  <div class="joystick-section">
+  <h4>Dimensions</h4>
+  <div class="dimension-controls">
+    <label>Width:</label>
+    <button (click)="changeDimension('width', -1)">-</button>
+    <input type="number" [formControl]="widthScale" min="0.1" max="2" step="0.1">
+    <button (click)="changeDimension('width', 1)">+</button>
+
+    <label>Height:</label>
+    <button (click)="changeDimension('height', -1)">-</button>
+    <input type="number" [formControl]="heightScale" min="0.1" max="2" step="0.1">
+    <button (click)="changeDimension('height', 1)">+</button>
+  </div>
+  </div>
+  </div>
+  <div class="z-index-controls">
+  <div class="joystick-section">
+  <label>Z-index:</label>
+  <div class="z-index-controls">
+  <button (click)="adjustZIndex(-1)">-</button>
+  <button (click)="adjustZIndex(1)">+</button>
+  <div class="joystick-section">
+  </div>    
+</div>
+  <div class="node-info text-center">
     <p>Selected Node: <strong> {{lastInteractedNodeKey}} </strong></p>
     <p>POS: <strong> x={{lastNodePosition?.x}}, y={{lastNodePosition?.y}} </strong></p>
   </div>
@@ -265,7 +295,7 @@ textarea {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  padding: 20px;
+  padding: 6px;
   background-color: #ffffff;
   border: 2px solid #ddd;
   border-radius: 10px;
@@ -281,6 +311,7 @@ textarea {
 
 .horizontal-controls {
   display: flex;
+  padding: 4px;
   justify-content: center;
   align-items: center;
 }
@@ -325,6 +356,53 @@ textarea {
   border-radius: 4px;
 }
 
+.joystick-section {
+  margin-bottom: 10px;
+  padding: 10px;
+  background-color: #d9e2ff;
+  border-radius: 6px;
+}
+
+.joystick-section h4 {
+  margin: 0 0 10px 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #ccc;
+}
+
+.direction-controls,
+.dimension-controls,
+.z-index-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.direction-controls button,
+.dimension-controls button,
+.z-index-controls button {
+  background-color: #5c85d6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  margin: 0 5px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.direction-controls button:hover,
+.dimension-controls button:hover,
+.z-index-controls button:hover {
+  background-color: #3e64b0;
+}
+
+.scale-control input,
+.dimension-controls input {
+  text-align: center;
+  margin: 0 5px;
+  width: 50px;
+}
+
 .node-info {
   margin-top: 20px;
   padding: 10px;
@@ -345,6 +423,18 @@ textarea {
     resize: vertical;
     font-family: monospace;
   }
+
+  .close-button {
+      position: relative;
+      top: -10;
+      right: 0;
+      margin-bottom:2px;
+      border: none;
+      background-color: transparent;
+      color: #333;
+      font-size: 16px;
+      cursor: pointer;
+    }
 
     `,
   ],
@@ -373,11 +463,16 @@ export class AppComponent implements AfterViewInit{
   lastInteractedNodeKey: string | null = null;
   lastNodePosition: Position | null = null;
   nodeScale = new FormControl(0.5);
+  widthScale = new FormControl(1);
+  heightScale = new FormControl(1);
   lastInteractedIndex: number | null = null;
   private pdfUrlChange = new Subject<string>();
   private jsonInputChange = new Subject<string>();
   joystickVisible: boolean = true;
   outputAvailable: boolean = false;
+  selectedNodeWidth: number | null = null;
+  selectedNodeHeight: number | null = null;
+  selectedNodeZIndex: number = 10;
 
 
 constructor() {
@@ -387,6 +482,18 @@ constructor() {
       distinctUntilChanged() 
     ).subscribe(newValue => {
       console.log('New nodeScale value:', newValue);
+    });
+    this.widthScale.valueChanges.pipe(
+      debounceTime(300), 
+      distinctUntilChanged() 
+    ).subscribe(newValue => {
+      console.log('New widthScale value:', newValue);
+    });
+    this.heightScale.valueChanges.pipe(
+      debounceTime(300), 
+      distinctUntilChanged() 
+    ).subscribe(newValue => {
+      console.log('New heightScale value:', newValue);
     });
     this.setupJsonInputChangeSubscription();
   }
@@ -469,6 +576,7 @@ createDraggableNode(node: Node, position: Position, index:any): void {
   div.style.border = '1px solid blue'; 
   div.style.backgroundColor = 'rgba(0,0,255,0.1)';
   div.setAttribute('data-key', node.key); 
+  div.style.zIndex = '10';
   div.style.cursor = 'grab';
   if(index >= 0){
     this.makeNodeDraggable(div, node, index);
@@ -497,6 +605,11 @@ makeNodeDraggable(element: HTMLElement, node: NodeDetails, index:number): void {
     ],
     listeners: {
       start: event => {
+        this.resetNodeColors();
+        const target = event.target as HTMLElement;
+        this.selectedNodeZIndex = parseInt(target.style.zIndex) || 11;
+        target.style.backgroundColor = 'rgba(255,0,0,0.1)'; 
+        target.style.border = '1px solid red';
         event.target.style.transform = `translate(${0}px, ${0}px)`;
         this.lastInteractedNodeKey = event.target.getAttribute('data-key');
         this.lastInteractedIndex = index >= 0 ? index : null;
@@ -509,12 +622,20 @@ makeNodeDraggable(element: HTMLElement, node: NodeDetails, index:number): void {
         }else{
           this.lastInteractedIndex = null;
         }
+        const initialX = parseFloat(element.style.left) - canvasRect.left;
+        const initialY = parseFloat(element.style.top);
+        element.setAttribute('data-x', initialX.toString());
+        element.setAttribute('data-y', initialY.toString());
+        this.updateJoystickPanel();
       },
       move: event => {
-        event.target.style.transform = `translate(${0}px, ${0}px)`;
+        
+        //event.target.style.transform = `translate(${0}px, ${0}px)`;
         let x = (parseFloat(event.target.getAttribute('data-x')) || 0) + event.dx;
         let y = (parseFloat(event.target.getAttribute('data-y')) || 0) + event.dy;
-        event.target.style.transform = `translate(${x}px, ${y}px)`;
+        //event.target.style.transform = `translate(${x}px, ${y}px)`;
+        event.target.style.left = `${x + canvasRect.left}px`; // Adjust for canvas offset
+        event.target.style.top = `${y}px`;
         event.target.setAttribute('data-x', x.toString());
         event.target.setAttribute('data-y', y.toString());
       },
@@ -545,6 +666,9 @@ makeNodeDraggable(element: HTMLElement, node: NodeDetails, index:number): void {
       this.selectNodeForJoystick(key, index, {x,y});
       this.refreshNodeDescriptions();
       this.generateOutput(true);
+      event.target.style.backgroundColor = 'rgba(255,0,0,0.1)'; 
+      event.target.style.border = '1px solid red';
+      this.selectedNodeZIndex = event.target.zIndex;
     }
     }
   })
@@ -557,10 +681,76 @@ if (node) {
   const position = index !== null && node.positions ? node.positions[index] : node.position;
   if (position) {
     this.lastNodePosition = { ...position };
+  }
+
+  this.selectedNodeWidth = node.width || 0;
+  this.selectedNodeHeight = node.height || 0;
+  this.updateJoystickPanel();
+}
+this.resetNodeColors();
+const target = event.target as HTMLElement;       
+target.style.backgroundColor = 'rgba(255,0,0,0.1)'; 
+target.style.border = '1px solid red';
+  });
+}
+
+resetNodeColors(): void {
+  document.querySelectorAll('.draggable-node').forEach(node => {
+    const element = node as HTMLElement;
+    element.style.backgroundColor = 'rgba(0,0,255,0.1)';
+    element.style.border = '1px solid blue';
+  });
+}
+
+changeDimension(dimension: 'width' | 'height', change: number): void {
+  if (!this.lastInteractedNodeKey) return;
+  
+  const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
+  if (!node) return;
+  
+  const currentDimension = dimension === 'width' ? node.width : node.height;
+  const newDimension = dimension === 'width' ?(currentDimension || 0) + change*this.widthScale.value! : (currentDimension || 0) + change*this.heightScale.value!;
+  if (dimension === 'width') {
+    this.selectedNodeWidth = newDimension > 0 ? newDimension : 0;
+    node.width = this.selectedNodeWidth;
+  } else {
+    this.selectedNodeHeight = newDimension > 0 ? newDimension: 0;
+    node.height = this.selectedNodeHeight;
+  }
+
+  this.updateNodeElementSize(this.lastInteractedNodeKey);
+  this.generateOutput(true);
+  this.updateJoystickPanel();
+}
+
+adjustZIndex(change: number): void {
+  if (!this.lastInteractedNodeKey) return;
+
+  const selector = this.lastInteractedIndex !== -1
+    ? `[data-key='${this.lastInteractedNodeKey}'][data-index='${this.lastInteractedIndex}']`
+    : `[data-key='${this.lastInteractedNodeKey}']`;
+  const nodeElement = document.querySelector(selector) as HTMLElement;
+
+  if (nodeElement) {
+    let newZIndex = parseInt(nodeElement.style.zIndex) || 10;
+    newZIndex = Math.max(5, newZIndex + change); 
+    nodeElement.style.zIndex = `${newZIndex}`;
+    this.selectedNodeZIndex = newZIndex; 
     this.updateJoystickPanel();
   }
 }
-  });
+
+updateNodeElementSize(key: string): void {
+  const selector = this.lastInteractedIndex !== -1
+? `[data-key='${this.lastInteractedNodeKey}'][data-index='${this.lastInteractedIndex}']`
+: `[data-key='${this.lastInteractedNodeKey}']`;
+  const nodeElement = document.querySelector(selector) as HTMLElement;
+  if (!nodeElement) return;
+  const node = this.allNodes.find(n => n.key === key);
+  if (!node) return;
+  
+  nodeElement.style.width = `${node.width}px`;
+  nodeElement.style.height = `${node.height}px`;
 }
 
 generateNodes(json: any): void {
@@ -584,7 +774,6 @@ parseAndExtractNodes(json: any) {
       }
     });
     this.outputAvailable = true;
-    console.log("this was called", this.outputAvailable);
     this.showOutputContainer();
   } catch (error) {
     console.error('Invalid JSON input', error);
@@ -629,7 +818,6 @@ toggleJoystickVisibility(): void {
 
 
 //Node Manipulation and Configuration
-
 moveNode(direction: string): void {
   //This is for joystick movement
   if (!this.lastInteractedNodeKey || this.lastNodePosition === null) return;
@@ -684,7 +872,15 @@ selectNodeForJoystick(key: string, index: number | null, position: Position) {
   this.lastInteractedNodeKey = key;
   this.lastInteractedIndex = index;
   this.lastNodePosition = position;
-  this.updateJoystickPanel();
+  const node = this.allNodes.find(n => n.key === key);
+    if (node) {
+      this.selectedNodeWidth = node.width || 0;
+      
+      this.selectedNodeHeight = node.height || 0;
+    }
+
+    this.updateJoystickPanel();
+  
 }
 
 
@@ -775,14 +971,25 @@ hideOutputContainer(): void {
 updateJoystickPanel() {
     const joystickInfo = document.querySelector('.node-info');
     if (joystickInfo && this.lastNodePosition) {
-      joystickInfo.innerHTML = `Last Selected Node: ${this.lastInteractedNodeKey}<br>Position: x=${this.lastNodePosition.x}, y=${this.lastNodePosition.y}`;
+      //joystickInfo.innerHTML = `Last Selected Node: ${this.lastInteractedNodeKey}<br>Position: x=${this.lastNodePosition.x}, y=${this.lastNodePosition.y}`;
+      joystickInfo.innerHTML = 
+      `Selected Node: ${this.lastInteractedNodeKey}<br>
+      Pos:
+      x=${this.lastNodePosition.x.toFixed(4)},
+      y=${this.lastNodePosition.y.toFixed(4)}<br>
+      Z-index: ${this.selectedNodeZIndex} <br> 
+      Height: ${this.selectedNodeHeight} |
+      Width: ${this.selectedNodeWidth}`;
     }
+    
   }
 
 onNodeDragEnd(key: string, x: number, y: number): void {
     const node = this.allNodes.find(n => n.key === key);
     if (node) {
       this.updateNodePosition(key, x, y);
+      this.selectedNodeWidth = node.width|| 0;
+      this.selectedNodeHeight = node.height || 0;
     }
   }
 
