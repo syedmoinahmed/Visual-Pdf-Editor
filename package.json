@@ -7,7 +7,7 @@
   "scripts": {
     "start": "vite",
     "dev": "vite",
-    "build": "tsc && vite build --config vite.build.config.js",
+    "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "keywords": [],
