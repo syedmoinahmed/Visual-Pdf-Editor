@@ -1,12 +1,12 @@
-import { BehaviorSubject, Subject} from 'rxjs';
+import { Subject} from 'rxjs';
 import { Component, ElementRef, ViewChild, AfterViewInit, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ReactiveFormsModule, FormControl } from '@angular/forms';
-import { PDFDocumentProxy, GlobalWorkerOptions, getDocument, PageViewport } from "pdfjs-dist";
+import {GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import interact from 'interactjs';
-import { debounceTime, distinctUntilChanged, switchMap, catchError, filter } from 'rxjs/operators';
+import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
 import { of } from 'rxjs';
 
 
@@ -579,15 +579,15 @@ createDraggableNode(node: Node, position: Position, index:any): void {
   div.style.zIndex = '10';
   div.style.cursor = 'grab';
   if(index >= 0){
-    this.makeNodeDraggable(div, node, index);
+    this.makeNodeDraggable(div, index);
     div.setAttribute('data-index', index.toString());
   }else{
-    this.makeNodeDraggable(div, node, -1);
+    this.makeNodeDraggable(div, -1);
     div.setAttribute('data-index', "");
   }
   }
 
-makeNodeDraggable(element: HTMLElement, node: NodeDetails, index:number): void {
+makeNodeDraggable(element: HTMLElement, index:number): void {
 
     const canvasRect = this.pdfCanvas.nativeElement.getBoundingClientRect();
   interact(element).draggable({
@@ -915,6 +915,7 @@ generateOutput(onlyEdited: boolean): void {
 
 
   Object.entries(output.node_override).forEach(([key, detail]) => {
+    console.log(key);
     if (detail.positions && detail.positions.length === 1) {
       detail.position = detail.positions[0];
       delete detail.positions;
@@ -975,8 +976,8 @@ updateJoystickPanel() {
       joystickInfo.innerHTML = 
       `Selected Node: ${this.lastInteractedNodeKey}<br>
       Pos:
-      x=${this.lastNodePosition.x.toFixed(4)},
-      y=${this.lastNodePosition.y.toFixed(4)}<br>
+      x=${this.lastNodePosition?.x?.toFixed(4)},
+      y=${this.lastNodePosition?.y?.toFixed(4)}<br>
       Z-index: ${this.selectedNodeZIndex} <br> 
       Height: ${this.selectedNodeHeight} |
       Width: ${this.selectedNodeWidth}`;

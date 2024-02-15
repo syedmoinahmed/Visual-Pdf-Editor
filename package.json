@@ -7,7 +7,7 @@
   "scripts": {
     "start": "vite",
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build --config vite.build.config.js",
     "preview": "vite preview"
   },
   "keywords": [],
@@ -31,7 +31,9 @@
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.0.379",
     "rxjs": "^7.5.7",
+    "vite-plugin-dts": "^3.7.2",
     "vite-plugin-top-level-await": "^1.4.1",
+    "vite-plugin-tsconfig": "^1.0.5",
     "zone.js": "^0.13.1"
   }
 }

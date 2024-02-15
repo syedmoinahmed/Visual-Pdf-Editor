@@ -1,9 +1,9 @@
 {
     "compilerOptions": {
-      "target": "ESNext",
+      "target": "ES2020",
       "useDefineForClassFields": true,
       "module": "ESNext",
-      "lib": ["ESNext", "DOM"],
+      "lib": ["ES2020", "DOM", "DOM.Iterable"],
       "moduleResolution": "Node",
       "strict": true,
       "resolveJsonModule": true,
@@ -14,8 +14,8 @@
       "noUnusedParameters": true,
       "noImplicitReturns": true,
       "skipLibCheck": true,
-      "types": ["vite/client"], // for vite
-      "experimentalDecorators": true, // for angular
+      "types": ["vite/client"],
+      "experimentalDecorators": true,
     },
     "include": ["src"]
   }
