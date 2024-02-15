@@ -507,7 +507,37 @@ ngAfterViewInit(): void {
       this.loadAndRenderPdf(this.pdfUrl);
     }
     this.toggleJoystickVisibility();
+    window.addEventListener('keydown', this.handleKeyDown.bind(this));
   }
+
+  handleKeyDown(event: KeyboardEvent): void {
+    // if (!this.lastInteractedNodeKey) {
+    //   alert("No node is selected.");
+    //   return;
+    // }
+  
+    switch (event.key) {
+      case 'ArrowUp':
+        this.moveNode('up');
+        break;
+      case 'ArrowDown':
+        this.moveNode('down');
+        break;
+      case 'ArrowLeft':
+        this.moveNode('left');
+        break;
+      case 'ArrowRight':
+        this.moveNode('right');
+        break;
+      default:
+        // Ignore other keys
+        return;
+    }
+  
+    // Prevent default action to avoid scrolling the page
+    event.preventDefault();
+  }
+  
 
   //CREATION AND LOADING of nodes and pdf
 loadAndRenderPdf(url: string): void {
@@ -845,6 +875,7 @@ const selector = this.lastInteractedIndex !== -1
 ? `[data-key='${this.lastInteractedNodeKey}'][data-index='${this.lastInteractedIndex}']`
 : `[data-key='${this.lastInteractedNodeKey}']`;
   const nodeElement = document.querySelector(selector) as HTMLElement;
+  console.log("nodeelement", this.lastInteractedIndex);
 if (nodeElement) {
   nodeElement.style.transform = 'translate(0px, 0px)';
   nodeElement.style.left = `${newX}px`;
@@ -860,7 +891,7 @@ updateNodePosition(key: string, x: number, y: number, index?: number | null): vo
   const node = this.allNodes.find(n => n.key === key);
   if (!node) return;
 
-  if (node.positions && index && index !== null && index >= 0) {
+  if (node.positions && typeof index === 'number' && index >= 0) {
     node.positions[index] = { x, y };
   } else {
     node.position = { x, y };
