@@ -9,11 +9,17 @@ import interact from 'interactjs';
 import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
 import { of } from 'rxjs';
 
+import {ContextMenuComponent} from './contextMenu.component';
 
 
 interface Position {
   x: number;
   y: number;
+}
+
+interface MenuActionEvent {
+  action: string;
+  data?: any; 
 }
 
 interface Node {
@@ -24,6 +30,8 @@ interface Node {
   width?: number;
   height?: number;
   fontSize?: number;
+  children?: any[];
+  maxLines?: number;
 }
 
 interface NodeDetails {
@@ -34,6 +42,8 @@ interface NodeDetails {
   width?: number;
   height?: number;
   fontSize?: number;
+  children?: ChildNode[];
+  maxLines?: number;
 }
 
 interface NodeOverride {
@@ -44,16 +54,43 @@ interface OutputFormat {
   node_override: NodeOverride;
 }
 
+interface ChildNode {
+  type: string;
+  fontSize: number;
+  padding: number;
+  width: number;
+}
+
+interface newNode {
+  name: string; 
+  x: number; 
+  y: number; 
+  height?:number; 
+  width?:number; 
+  fontSize?:number; 
+  type:string;
+  children?: ChildNode[];
+  maxLines?: number;
+}
+
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, FormsModule, ReactiveFormsModule],
+  imports: [CommonModule, RouterOutlet, RouterLink, FormsModule, ReactiveFormsModule, ContextMenuComponent],
   template: `
 <div class="page-container">
   <div class="pdf-container">
+  <app-context-menu (menuAction)="handleMenuAction($event)" class="z-99"></app-context-menu>
     <canvas #pdfCanvas class="border-canvas"></canvas>
-
+    <div id="contextMenu" class="context-menu" style="display: none;">
+  <ul>
+    <li id="option1">{{joystickVisible?'Hide':'Show'}} Joystick</li>
+    <li id="option2">Edit Node Details</li>
+    <li id="option3">Duplicate Node</li>
+    <li id="option4">Delete Node</li>
+  </ul>
+</div>
   <div>
   <div class="header-container">
     <p class="available-nodes-heading">Available nodes:</p>
@@ -66,6 +103,115 @@ interface OutputFormat {
   </div>
 </div>
   </div>
+  <div class="node-dialog" *ngIf="showNodeDialog">
+  <div class="dialog-content">
+    <h2>Add New Node</h2>
+    <br>
+    <div class="form-container">
+      <div class="left-column">
+
+      <div *ngIf="allNodes.length > 0">
+          <label for="duplicateNodeSelect">Duplicate Existing Node:</label>
+          <select id="duplicateNodeSelect" [(ngModel)]="selectedNodeKey" (change)="onNodeSelect()">
+            <option value="" disabled selected>Select a node to duplicate</option>
+            <option *ngFor="let node of allNodes" [ngValue]="node.key">{{node.key}}</option>
+          </select>
+        </div>
+
+        <label for="nodeName">Node Name:</label>
+        <input type="text" id="nodeName" [(ngModel)]="newNode.name" placeholder="node_name" [disabled]='showOnlyDuplicateFields'>
+
+        <div *ngIf="!showOnlyDuplicateFields">
+        <label for="typeId">Type:</label>
+        <select id="typeId" [(ngModel)]="newNode.type">
+        <option *ngFor="let type of nodeTypes" [ngValue]="type">{{ type }}</option>
+        </select>
+        </div>
+
+      
+
+      <div *ngIf="newNode.type === 'table'" class="child-nodes-container">
+  <label for="node-maxLines">Max Lines:</label>
+  <input type="number" id="node-maxLines" [(ngModel)]="newNode.maxLines" placeholder="Max Lines" required>
+
+
+  <br>
+  <label for="childrenCount">Number of Children:</label>
+  <input type="number" id="childrenCount" [(ngModel)]="childrenCount" placeholder="Number of Children" required>
+  <button (click)="generateChildren()">Generate Children</button>
+
+  <br>
+  <div class="children-cards">
+    <div *ngFor="let child of newNode.children; let i = index" class="child-card">
+      <h4>Child {{i + 1}}</h4>
+      <label for="child-width-{{i}}">Width:</label>
+      <input type="number" id="child-width-{{i}}" [(ngModel)]="child.width" placeholder="Width" required>
+
+      <label for="child-fontSize-{{i}}">Font Size:</label>
+      <input type="number" id="child-fontSize-{{i}}" [(ngModel)]="child.fontSize" placeholder="Font Size">
+
+      <label for="child-padding-{{i}}">Padding:</label>
+      <input type="number" id="child-padding-{{i}}" [(ngModel)]="child.padding" placeholder="Padding">
+    </div>
+  </div>
+</div>
+
+<div *ngIf="newNode.type === 'multiple_text'" class="child-nodes-container">
+<label for="node-maxLines">Max Lines:</label>
+  <input type="number" id="node-maxLines" [(ngModel)]="newNode.maxLines" placeholder="Max Lines" required>
+</div>
+
+      </div>
+      <div class="right-column">
+      <label for="nodeX">X Position:</label>
+        <input type="number" id="nodeX" [(ngModel)]="newNode.x" placeholder="X" required>
+
+        <label for="nodeY">Y Position:</label>
+        <input type="number" id="nodeY" [(ngModel)]="newNode.y" placeholder="Y" required>
+
+        <div  *ngIf="!showOnlyDuplicateFields">
+        <label for="node-width">Width:</label>
+        <input type="number" id="node-width" [(ngModel)]="newNode.width" placeholder="Width" required>
+        </div>
+
+        <div  *ngIf="!showOnlyDuplicateFields">
+        <label for="node-height">Height:</label>
+        <input type="number" id="node-height" [(ngModel)]="newNode.height" placeholder="Height" required>
+        </div>
+
+        <div  *ngIf="!showOnlyDuplicateFields">
+        <label for="node-font">Font Size:</label>
+        <input type="number" id="node-font" [(ngModel)]="newNode.fontSize" placeholder="Font Size" required>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button (click)="cancelNewNode()">Cancel</button>
+      <button (click)="confirmNewNode(saveType)">Confirm</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="node-dialog" *ngIf="showDuplicateModal">
+  <div class="dialog-content">
+    <h3>Duplicate New Node</h3>
+    <br>
+    <label for="nodeName">Node Name:</label>
+    <input type="text" id="nodeName" [(ngModel)]="newNode.name" placeholder="node_name" required [disabled]="true">
+    
+    <label for="nodeX">X Position:</label>
+    <input class="p-3" type="number" id="nodeX" [(ngModel)]="newNode.x" placeholder="X" required>
+    
+    <label for="nodeY">Y Position:</label>
+    <input class="p-3" type="number" id="nodeY" [(ngModel)]="newNode.y" placeholder="Y" required>
+    
+    <div class="dialog-actions">
+      <button (click)="cancelNewNode()">Cancel</button>
+      <button (click)="confirmDuplicateNode()">Confirm</button>
+    </div>
+  </div>
+</div>
 
   <div class="config-container">
   <div class="centered-heading">
@@ -88,7 +234,7 @@ interface OutputFormat {
 <div class="joystick">
 <button class="close-button" (click)="toggleJoystickVisibility()">Close Control Panel</button>
   <div class="joystick-controls">
-    <div class="direction-controls">
+    <div *ngIf="!isChildContextOnly" class="direction-controls">
     <div class="joystick-section">
     <h4>Directions:</h4>
     <div class="direction-controls">
@@ -106,7 +252,8 @@ interface OutputFormat {
     </div>
 </div>
   </div>
-  <div class="dimension-controls">
+ 
+  <div *ngIf="!isChildContextOnly" class="dimension-controls">
   <div class="joystick-section">
   <h4>Dimensions</h4>
   <div class="dimension-controls">
@@ -122,7 +269,23 @@ interface OutputFormat {
   </div>
   </div>
   </div>
-  <div class="z-index-controls">
+<div *ngIf="isChildContextOnly" class="dimension-controls">
+  <div class="joystick-section">
+  <h4>Editing: {{ convertToInt(tempNode.key)}}</h4>
+  <div class="dimension-controls">
+  <label>Width:</label>
+    <button (click)="adjustChildDimension('width', -1)">-</button>
+    {{selectedChildNode.width}}
+    <button (click)="adjustChildDimension('width', 1)">+</button>
+ 
+    <label>Padding:</label>
+    <button (click)="adjustChildDimension('padding', -1)">-</button>
+    {{selectedChildNode.padding}}
+    <button (click)="adjustChildDimension('padding', 1)">+</button>
+  </div>
+</div>
+</div>
+  <div *ngIf="!isChildContextOnly" class="z-index-controls">
   <div class="joystick-section">
   <label>Z-index:</label>
   <div class="z-index-controls">
@@ -136,6 +299,8 @@ interface OutputFormat {
     <p>POS: <strong> x={{lastNodePosition?.x}}, y={{lastNodePosition?.y}} </strong></p>
   </div>
 </div>
+</div>
+
 
 
   `,
@@ -301,6 +466,8 @@ textarea {
   border-radius: 10px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.18), 0 2px 3px rgba(0,0,0,0.26);
   z-index: 1000;
+  max-height: 90vh; 
+  overflow-y: auto; 
 }
 
 .direction-controls {
@@ -436,6 +603,177 @@ textarea {
       cursor: pointer;
     }
 
+
+  .node-dialog {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 999;
+  overflow-y: auto;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.dialog-content {
+  width: 75%;
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  max-height: 90vh; 
+  overflow-y: auto; 
+}
+
+.form-container {
+  display: flex;
+  justify-content: space-between;
+}
+
+.left-column, .right-column {
+  display: flex;
+  flex-direction: column;
+  width: 48%;
+}
+
+.label {
+  margin-bottom: 5px;
+  color: #333;
+  font-weight: bold;
+}
+
+input[type="text"], input[type="number"] {
+  padding: 10px;
+  margin-bottom: 15px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.3s;
+}
+
+button:hover {
+  opacity: 0.8;
+}
+
+.cancel-button {
+  background-color: #f44336;
+  color: white;
+}
+
+.confirm-button {
+  background-color: #4caf50;
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .form-container {
+    flex-direction: column;
+  }
+  .left-column, .right-column {
+    width: 100%;
+  }
+}
+
+select {
+  padding: 10px;
+  margin-bottom: 15px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: white;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+
+.context-menu {
+  border: 1px solid #ccc;
+  box-shadow: 2px 2px 5px #888;
+  background-color: white;
+  position: absolute;
+  z-index: 1000;
+}
+
+.context-menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.context-menu ul li {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.context-menu ul li:hover {
+  background-color: #f0f0f0;
+}
+/* ...existing styles... */
+
+.child-nodes-container {
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin-top: 20px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.children-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-height: 400px; /* Adjust the height as needed */
+  overflow-y: auto;
+  align-items: flex-start;
+}
+
+.child-card {
+  width: calc(50% - 5px); /* Adjust the spacing based on the gap */
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+}
+
+.child-card h4 {
+  margin: 0 0 10px 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #eee;
+}
+
+.child-card label {
+  display: block;
+  margin: 5px 0;
+}
+
+.child-card input[type="number"] {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+
     `,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -473,7 +811,20 @@ export class AppComponent implements AfterViewInit{
   selectedNodeWidth: number | null = null;
   selectedNodeHeight: number | null = null;
   selectedNodeZIndex: number = 10;
-
+  showNodeDialog = false;
+  nodeTypes: string[] = ['text', 'bar_code', 'date', 'image', 'multiple', 'multiple_text', 'table', 'sub'];
+  newNode:newNode = { name: '', x: 0, y: 0, type: 'text', children:[]};
+  childrenCount: number = 0;
+  saveType:string = 'new';
+  selectedChildNode:any;
+  selectedChildIndex: any;
+  lastSelectedParentKey: any;
+  isChildContextOnly:boolean = false;
+  showDuplicateModal = false;
+  selectedNodeKey: string = '';
+  tempNode: any={};
+  showOnlyDuplicateFields = false;
+  @ViewChild(ContextMenuComponent) contextMenuComponent!: ContextMenuComponent;
 
 constructor() {
     GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.mjs';
@@ -496,6 +847,7 @@ constructor() {
       console.log('New heightScale value:', newValue);
     });
     this.setupJsonInputChangeSubscription();
+    
   }
 
 ngAfterViewInit(): void {
@@ -508,14 +860,10 @@ ngAfterViewInit(): void {
     }
     this.toggleJoystickVisibility();
     window.addEventListener('keydown', this.handleKeyDown.bind(this));
+    this.setupContextMenuOptions();
   }
 
   handleKeyDown(event: KeyboardEvent): void {
-    // if (!this.lastInteractedNodeKey) {
-    //   alert("No node is selected.");
-    //   return;
-    // }
-  
     switch (event.key) {
       case 'ArrowUp':
         this.moveNode('up');
@@ -530,15 +878,140 @@ ngAfterViewInit(): void {
         this.moveNode('right');
         break;
       default:
-        // Ignore other keys
+        // Ignoring other keys
         return;
     }
   
-    // Prevent default action to avoid scrolling the page
+    
     event.preventDefault();
   }
-  
 
+  convertToInt(numberString: any): string {
+    const match = numberString.match(/(\d+)$/);
+    if (match) {
+      const lastNumber = parseInt(match[0], 10);
+      const incrementedNumber = lastNumber + 1;
+      return numberString.replace(/(\d+)$/, incrementedNumber.toString());
+    }else{
+      return 'Child';
+    }
+  }
+
+  handleMenuAction(event: MenuActionEvent) {
+    switch(event.action) {
+      case 'addNode':
+        this.addNewNodeFromMenu(event);
+        break;
+      
+    }
+  }
+
+  onNodeSelect(): void {
+    const selectedNode = this.allNodes.find(node => node.key === this.selectedNodeKey);
+    if (selectedNode) {
+      this.newNode.name = selectedNode.key;
+      this.showOnlyDuplicateFields = true;
+    } else {
+      this.newNode.name = '';
+      this.showOnlyDuplicateFields = false;
+    }
+  }
+
+  setupContextMenuOptions(): void {
+    document.getElementById('option1')?.addEventListener('click', () => this.toggleJoystickVisibility());
+    document.getElementById('option2')?.addEventListener('click', () => this.editTheSelectedNode());
+    document.getElementById('option3')?.addEventListener('click', () => this.duplicateNode());
+    document.getElementById('option4')?.addEventListener('click', () => this.deleteNode());
+  }
+
+  deleteNode(){
+    const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
+    if(node) {
+      this.removeAllVisualNodesByKey(node?.key!);
+      if(this.lastInteractedIndex !== undefined && this.lastInteractedIndex !==-1){
+        if (node.positions && node.positions.length > 0) {
+        node.positions?.splice(this.lastInteractedIndex as number, 1);
+        if (node.positions?.length === 1) {
+          const lastPosition = node.positions[0];
+          delete node.positions; 
+          node.position = lastPosition; 
+          this.createDraggableNode(node, node.position, -1);
+      }else{
+        node.positions?.forEach((position, index) => {
+          this.createDraggableNode(node, position, index);
+      });
+      }
+      this.allNodes = this.allNodes.map(n => n.key === node.key ? node : n);
+      this.generateOutput(true);
+    }
+      }else{
+        this.removeAllVisualNodesByKey(node?.key!);
+        this.allNodes = this.allNodes.filter(n => n.key !== node.key);
+        this.generateOutput(true);
+      }
+    }else{
+      alert('Cant delete this node, please try again');
+    }
+  }
+
+  confirmDuplicateNode(){
+    this.showDuplicateModal = false;
+    this.confirmNewNode('new');
+  }
+
+  duplicateNode(){
+    const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
+    if(node?.type === 'table'){
+      alert('Cant duplicate a table node, please create a new one');
+      return;
+    }
+    this.newNode.name = node?.key!;
+    this.showDuplicateModal = true;
+  }
+
+  generateChildren() {
+    if(!this.newNode.width || this.newNode.width == 0){
+      alert('Please add table width to continue!');
+      return;
+    }
+    const defaultWidth = Math.floor(this.newNode.width / this.childrenCount);
+    this.newNode.children = Array.from({ length: this.childrenCount }, () => ({
+      type: 'text',
+      fontSize: this.newNode.fontSize || 7, 
+      padding: 5, 
+      width: defaultWidth
+    }));
+  }
+
+  editTheSelectedNode(){
+    const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
+    this.newNode.name = node?.key || '';
+    this.newNode.height = node?.height;
+    this.newNode.width = node?.width;
+    this.newNode.type = node?.type || '';
+    this.newNode.fontSize = node?.fontSize;
+    this.newNode.x = node?.position?.x || 0;
+    this.newNode.y = node?.position?.y || 0;
+    this.saveType = 'edit';
+    this.showNodeDialog = true; 
+    // const existingNodeIndex = this.allNodes.findIndex(node => node.key === node.key);
+    // if (existingNodeIndex !== -1) {
+    //     this.removeAllVisualNodesByKey(nodeName);
+    //     const existingNode = this.allNodes[existingNodeIndex];
+    //     if (existingNode.position) {
+    //         existingNode.positions = [{ x: existingNode.position.x, y: existingNode.position.y }];
+    //         delete existingNode.position;
+    //     }
+    //     existingNode.positions?.push({ x: this.newNode.x, y: this.newNode.y });
+
+       
+    //     this.allNodes[existingNodeIndex] = existingNode;
+    //     existingNode.positions?.forEach((position, index) => {
+    //         this.createDraggableNode(existingNode, position, index);
+    //     });
+    // } 
+  }
+  
   //CREATION AND LOADING of nodes and pdf
 loadAndRenderPdf(url: string): void {
     //This method loads the pdf on every url change
@@ -580,7 +1053,6 @@ loadAndRenderPdf(url: string): void {
   }
 
 createDraggableNode(node: Node, position: Position, index:any): void {
-    //creates the div for each node that needs to be dragged
     if (!this.pdfCanvas || !this.pdfCanvas.nativeElement) {
       console.error('Canvas is not initialized yet.');
       return;
@@ -604,7 +1076,7 @@ createDraggableNode(node: Node, position: Position, index:any): void {
   div.style.top = `${adjustedY}px`;
   div.style.position = 'absolute';
   div.style.border = '1px solid blue'; 
-  div.style.backgroundColor = 'rgba(0,0,255,0.1)';
+  div.style.backgroundColor = 'rgba(0,0,255,0.1)'; 
   div.setAttribute('data-key', node.key); 
   div.style.zIndex = '10';
   div.style.cursor = 'grab';
@@ -615,11 +1087,28 @@ createDraggableNode(node: Node, position: Position, index:any): void {
     this.makeNodeDraggable(div, -1);
     div.setAttribute('data-index', "");
   }
-  }
+
+ // div.addEventListener('contextmenu', (event) => this.showContextMenu(event));
+  
+}
+
+showContextMenu(event: MouseEvent): void {
+  event.preventDefault();
+  const contextMenu = document.getElementById('contextMenu');
+  if (!contextMenu) return;
+  contextMenu.style.display = 'block';
+  contextMenu.style.left = `${event.pageX}px`;
+  contextMenu.style.top = `${event.pageY}px`;
+  const hideMenu = () => {
+    contextMenu.style.display = 'none';
+    document.removeEventListener('click', hideMenu);
+  };
+  document.addEventListener('click', hideMenu);
+}
 
 makeNodeDraggable(element: HTMLElement, index:number): void {
 
-    const canvasRect = this.pdfCanvas.nativeElement.getBoundingClientRect();
+  const canvasRect = this.pdfCanvas.nativeElement.getBoundingClientRect();
   interact(element).draggable({
     inertia: true,
     modifiers: [
@@ -636,6 +1125,7 @@ makeNodeDraggable(element: HTMLElement, index:number): void {
     listeners: {
       start: event => {
         this.resetNodeColors();
+        this.isChildContextOnly = false;
         const target = event.target as HTMLElement;
         this.selectedNodeZIndex = parseInt(target.style.zIndex) || 11;
         target.style.backgroundColor = 'rgba(255,0,0,0.1)'; 
@@ -696,7 +1186,7 @@ makeNodeDraggable(element: HTMLElement, index:number): void {
       this.selectNodeForJoystick(key, index, {x,y});
       this.refreshNodeDescriptions();
       this.generateOutput(true);
-      event.target.style.backgroundColor = 'rgba(255,0,0,0.1)'; 
+      event.target.style.backgroundColor = 'rgba(255,0,0,0.1)'; //laal rang
       event.target.style.border = '1px solid red';
       this.selectedNodeZIndex = event.target.zIndex;
     }
@@ -704,6 +1194,7 @@ makeNodeDraggable(element: HTMLElement, index:number): void {
   })
   .on('tap', event => {
     const key = event.currentTarget.getAttribute('data-key');
+    this.isChildContextOnly = false;
     this.lastInteractedNodeKey = key;
     this.lastInteractedIndex = index; 
     const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
@@ -712,13 +1203,14 @@ if (node) {
   if (position) {
     this.lastNodePosition = { ...position };
   }
-
+  event.currentTarget.addEventListener('contextmenu', (event:any) => this.showContextMenu(event));
   this.selectedNodeWidth = node.width || 0;
   this.selectedNodeHeight = node.height || 0;
   this.updateJoystickPanel();
 }
+
 this.resetNodeColors();
-const target = event.target as HTMLElement;       
+const target = event.target as HTMLElement;   
 target.style.backgroundColor = 'rgba(255,0,0,0.1)'; 
 target.style.border = '1px solid red';
   });
@@ -727,17 +1219,26 @@ target.style.border = '1px solid red';
 resetNodeColors(): void {
   document.querySelectorAll('.draggable-node').forEach(node => {
     const element = node as HTMLElement;
-    element.style.backgroundColor = 'rgba(0,0,255,0.1)';
+    if(element.getAttribute('type') && element.getAttribute('type') === 'table'){
+      element.style.backgroundColor = 'rgba(0,0,0,0)';
+    }else{
+      element.style.backgroundColor = 'rgba(0,0,255,0.1)';
+    }
+    
     element.style.border = '1px solid blue';
   });
+
+  document.querySelectorAll('.table-child').forEach(node =>{
+    const ele = node as HTMLElement;
+    ele.style.backgroundColor = 'rgba(255, 255, 0, 0.1)'; 
+    ele.style.border = '1px solid orange'; 
+  })
 }
 
 changeDimension(dimension: 'width' | 'height', change: number): void {
   if (!this.lastInteractedNodeKey) return;
-  
   const node = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
   if (!node) return;
-  
   const currentDimension = dimension === 'width' ? node.width : node.height;
   const newDimension = dimension === 'width' ?(currentDimension || 0) + change*this.widthScale.value! : (currentDimension || 0) + change*this.heightScale.value!;
   if (dimension === 'width') {
@@ -771,16 +1272,26 @@ adjustZIndex(change: number): void {
 }
 
 updateNodeElementSize(key: string): void {
-  const selector = this.lastInteractedIndex !== -1
-? `[data-key='${this.lastInteractedNodeKey}'][data-index='${this.lastInteractedIndex}']`
-: `[data-key='${this.lastInteractedNodeKey}']`;
-  const nodeElement = document.querySelector(selector) as HTMLElement;
-  if (!nodeElement) return;
   const node = this.allNodes.find(n => n.key === key);
   if (!node) return;
-  
-  nodeElement.style.width = `${node.width}px`;
-  nodeElement.style.height = `${node.height}px`;
+
+
+
+
+let selector = `[data-key='${this.lastInteractedNodeKey}']`;
+
+
+const nodeElements = document.querySelectorAll(selector);
+
+
+if (!nodeElements.length) return;
+
+
+nodeElements.forEach((element) => {
+  const el = element as HTMLElement; 
+  el.style.width = `${node.width}px`;
+  el.style.height = `${node.height}px`;
+});
 }
 
 generateNodes(json: any): void {
@@ -793,7 +1304,9 @@ parseAndExtractNodes(json: any) {
     const nodes: Node[] = json.nodes || [];
     this.allNodes = nodes; 
     nodes.forEach((node) => {
-      if (node.position) {
+      if(node.type === 'table'){
+        this.createTableWithChildren(node);
+      }else if (node.position) {
         this.createDraggableNode(node, node.position, -1);
         this.nodeDescriptions.push(`${node.key} at x=${node.position.x}, y=${node.position.y}`);
       } else if (node.positions) {
@@ -813,8 +1326,123 @@ parseAndExtractNodes(json: any) {
   }
 }
 
+createTableWithChildren(tableNode: Node) {
+  if (!this.pdfCanvas || !this.pdfCanvas.nativeElement) {
+    console.error('Canvas is not initialized yet.');
+    return;
+  }
 
-//Event Handlers for User Inputs and Actions
+  const tableDiv = document.createElement('div');
+  tableDiv.className = 'draggable-node';
+  tableDiv.style.width = `${tableNode.width}px`;
+  tableDiv.style.position = 'absolute';
+  tableDiv.style.border = '1px solid blue'; 
+  tableDiv.setAttribute('data-key', tableNode.key);
+  tableDiv.setAttribute('type', "table");
+  tableDiv.style.zIndex = '10';
+  tableDiv.style.cursor = 'grab';
+  tableDiv.style.overflowX = 'visible';
+  tableDiv.style.height = `50px`;
+  let totalWidthUsed = 0;
+ // let currentTop = 0;
+  tableDiv.setAttribute('data-index', "");
+
+  const canvasRect = this.pdfCanvas.nativeElement.getBoundingClientRect();
+  const adjustedX = canvasRect.left + tableNode?.position!.x; 
+  const scrollTop = document.documentElement.scrollTop || 0;
+  const adjustedY = window.scrollY + tableNode?.position!.y - scrollTop;
+
+
+  tableNode?.children?.forEach((child, index) => {
+
+    tableDiv.style.left = `${adjustedX}px`;
+    tableDiv.style.top = `${adjustedY}px`;
+    const childDiv = document.createElement('div');
+    childDiv.setAttribute('data-child-id', index.toString());
+    childDiv.textContent = `Child ${index+1}`;
+    childDiv.className = 'table-child';
+    childDiv.style.width = `${child.width}px`;
+    childDiv.style.padding = `${child.padding}px`;
+    childDiv.style.top = `1px`; //only for visibility
+    childDiv.style.left = `${totalWidthUsed}px`;
+    childDiv.style.position = 'absolute';
+    childDiv.style.backgroundColor = 'rgba(255, 255, 0, 0.1)'; 
+    childDiv.style.border = '1px solid orange'; 
+    
+    tableDiv.appendChild(childDiv);
+    totalWidthUsed += child.width;
+
+    childDiv.addEventListener('click', () => {
+      this.selectChildNode(child, index, tableNode.key);
+    });
+  });
+  document.body.appendChild(tableDiv);
+  this.makeNodeDraggable(tableDiv, -1);
+}
+
+selectChildNode(childNode: ChildNode, index: number, parentKey:any): void {
+  this.isChildContextOnly = true;
+  this.selectedChildNode = childNode;
+  this.selectedChildIndex = index;
+  this.lastSelectedParentKey = parentKey;
+  this.selectedChildNode.width = childNode.width;
+  this.selectedChildNode.padding = childNode.padding;
+  this.tempNode.key = `child ${index}`;
+}
+
+adjustChildDimension(type: string, amount:number){
+if(!this.selectedChildNode){
+  alert("Select a child in the table");
+  return;
+}
+
+const parentDiv = document.querySelector(`div[data-key="${this.lastSelectedParentKey}"]`);
+  if (!parentDiv) {
+    console.log("Parent div not found");
+    return;
+  }
+
+  const childDivs = parentDiv.querySelectorAll('.table-child');
+  let adjustmentMade = false;
+
+  childDivs.forEach((childDiv, index) => {
+    const childId = parseInt(childDiv.getAttribute('data-child-id') ?? "0");
+    if (childId === this.selectedChildIndex) {
+      const childHTMLElement = childDiv as HTMLElement; 
+      if (type === 'width') {
+        const currentWidth = parseInt(childHTMLElement.style.width.replace('px', ''));
+        const newWidth = currentWidth + amount;
+        childHTMLElement.style.width = `${newWidth}px`;
+      } else if (type === 'padding') {
+        const currentPadding = parseInt(childHTMLElement.style.padding.replace('px', ''));
+        const newPadding = currentPadding + amount;
+        childHTMLElement.style.padding = `${newPadding}px`;
+      }
+      adjustmentMade = true;
+      this.updateNodeDimensions(this.lastSelectedParentKey, childId, type, amount);
+    } else if (adjustmentMade && index > 0) {
+      const childHTMLElement = childDiv as HTMLElement; 
+      const previousChildDiv = childDivs[index - 1] as HTMLElement;
+      const previousChildRight = previousChildDiv.offsetLeft + previousChildDiv.offsetWidth;
+      childHTMLElement.style.left = `${previousChildRight}px`;
+    }
+  });
+}
+
+updateNodeDimensions(parentKey: string, childIndex: number, type: string, amount: number) {
+  const parentNode = this.allNodes.find(node => node.key === parentKey);
+  if (parentNode && parentNode.children && parentNode.children[childIndex]) {
+    const childNode = parentNode.children[childIndex];
+    if (type === 'width') {
+      childNode.width = (childNode.width || 0) + amount;
+    } else if (type === 'padding') {
+      childNode.padding = (childNode.padding || 0) + amount;
+    }
+    //this.movedNodes.set(parentKey, { ...parentNode });
+    this.generateOutput(true);
+  }
+}
+
 
 onPdfUrlChange(newUrl: string): void {
     this.pdfUrl = newUrl;
@@ -847,9 +1475,8 @@ toggleJoystickVisibility(): void {
   }
 
 
-//Node Manipulation and Configuration
+
 moveNode(direction: string): void {
-  //This is for joystick movement
   if (!this.lastInteractedNodeKey || this.lastNodePosition === null) return;
   const movementAmount = 1 * this.nodeScale.value!;
   let dx = 0, dy = 0;
@@ -875,7 +1502,6 @@ const selector = this.lastInteractedIndex !== -1
 ? `[data-key='${this.lastInteractedNodeKey}'][data-index='${this.lastInteractedIndex}']`
 : `[data-key='${this.lastInteractedNodeKey}']`;
   const nodeElement = document.querySelector(selector) as HTMLElement;
-  console.log("nodeelement", this.lastInteractedIndex);
 if (nodeElement) {
   nodeElement.style.transform = 'translate(0px, 0px)';
   nodeElement.style.left = `${newX}px`;
@@ -909,7 +1535,6 @@ selectNodeForJoystick(key: string, index: number | null, position: Position) {
       
       this.selectedNodeHeight = node.height || 0;
     }
-
     this.updateJoystickPanel();
   
 }
@@ -923,10 +1548,11 @@ generateOutput(onlyEdited: boolean): void {
     if (onlyEdited && !this.movedNodes.has(node.key)) return;
 
     const nodeDetail: NodeDetails = {
-      type: node.type,
-      width: node.width,
-      height: node.height,
-      fontSize: node.fontSize,
+      key: node.key,
+      type: node?.type,
+      width: node?.width,
+      height: node?.height,
+      fontSize: node?.fontSize,
     };
     if (node.positions || this.movedNodes.has(node.key)) {
       const updatedNode = this.movedNodes.get(node.key);
@@ -940,6 +1566,13 @@ generateOutput(onlyEdited: boolean): void {
     } else if (node.position) {
       nodeDetail.position = { ...node.position };
     }
+    if(node.children){
+      nodeDetail.children = node.children;
+    }
+
+    if(node.maxLines){
+      nodeDetail.maxLines = node.maxLines;
+    }
 
     output.node_override[node.key] = nodeDetail;
   });
@@ -947,7 +1580,7 @@ generateOutput(onlyEdited: boolean): void {
 
   Object.entries(output.node_override).forEach(([key, detail]) => {
     console.log(key);
-    if (detail.positions && detail.positions.length === 1) {
+    if (detail.positions && detail.positions.length === 1 && detail.type !== 'multiple') {
       detail.position = detail.positions[0];
       delete detail.positions;
     } else if (detail.positions && detail.positions.length === 0) {
@@ -1055,4 +1688,132 @@ refreshNodeDescriptions(): void {
       this.nodeDescriptions.push(description);
     });
   } 
+
+  addNewNodeFromMenu(event: MenuActionEvent) {
+    this.newNode.x = event.data.x; 
+    this.newNode.y = event.data.y;
+    this.showNodeDialog = true; 
+  }
+
+  
+
+  confirmNewNode(type:string) {
+    if(this.newNode.name.length === 0){
+      alert('Please enter the node name to conitnue');
+      return;
+    }
+    if(type === 'new'){
+    const nodeName = this.formatNodeName(this.newNode.name);
+    const existingNodeIndex = this.allNodes.findIndex(node => node.key === nodeName);
+    if (existingNodeIndex !== -1) {
+        this.removeAllVisualNodesByKey(nodeName);
+        const existingNode = this.allNodes[existingNodeIndex];
+        if (existingNode.position) {
+            existingNode.positions = [{ x: existingNode.position.x, y: existingNode.position.y }];
+            delete existingNode.position;
+        }
+        existingNode.positions?.push({ x: this.newNode.x, y: this.newNode.y });
+        this.allNodes[existingNodeIndex] = existingNode;
+        existingNode.positions?.forEach((position, index) => {
+            this.createDraggableNode(existingNode, position, index);
+        });
+        this.movedNodes.set(existingNode.key, { ...existingNode, positions: [...existingNode.positions!] });
+
+    } else {
+        const newNode: Node = {
+          key: nodeName,
+          type: this.newNode.type || 'text', 
+          position: {
+            x: this.newNode.x,
+            y: this.newNode.y
+          },
+          fontSize: this.newNode.fontSize,
+          height:  this.newNode.height,
+          width: this.newNode.width,
+        };
+
+        if(this.newNode.children && this.newNode.children.length>0){
+          newNode.children = this.newNode.children;
+        }
+
+        if(this.newNode.maxLines){
+          newNode.maxLines = this.newNode.maxLines;
+        }
+
+        if(this.newNode.type === 'multiple'){
+          delete newNode.position;
+          newNode['positions'] = [{x: this.newNode.x,y: this.newNode.y}];
+        }
+
+        this.allNodes.push(newNode);
+
+        if(newNode.children && newNode.children.length >= 0){
+          this.createTableWithChildren(newNode);
+        }else{
+          if(this.newNode.type === 'multiple'){
+            this.createDraggableNode(newNode, newNode.positions![0], 0);
+          }else{
+            this.createDraggableNode(newNode, newNode.position!, -1);
+          }
+          
+          
+        }
+    }
+  }else if(type === 'edit'){
+    const existingNode = this.allNodes.find(n => n.key === this.lastInteractedNodeKey);
+    this.removeAllVisualNodesByKey(existingNode?.key!);
+
+    const editedNewNode: Node = {
+      key: this.newNode.name,
+      type: this.newNode.type,
+    }
+
+    editedNewNode.height = this.newNode.height || existingNode?.height;
+    editedNewNode.width = this.newNode.width || existingNode?.width;
+    editedNewNode.fontSize = this.newNode.fontSize || existingNode?.fontSize;
+    editedNewNode.height = this.newNode.height || existingNode?.height;
+    const existingNodeIndex = this.allNodes.findIndex(node => node.key === existingNode?.key);
+    if(existingNode?.position){
+      editedNewNode.position = {x: this.newNode.x, y:this.newNode.y}
+      this.allNodes[existingNodeIndex] = editedNewNode;
+      this.createDraggableNode(editedNewNode, editedNewNode.position, -1);
+    }else{
+      editedNewNode.positions = existingNode?.positions || [];
+      editedNewNode.positions[this.lastInteractedIndex? 
+        this.lastInteractedIndex !== -1 ? 
+        this.lastInteractedIndex : 0 :0] = {x: this.newNode.x, y:this.newNode.y}
+    }
+    this.allNodes[existingNodeIndex] = editedNewNode;
+    editedNewNode.positions?.forEach((position, index) => {
+      this.createDraggableNode(editedNewNode, position, index);
+  });
+  }
+
+  this.generateOutput(true);
+  this.resetNewNode();
+}
+
+removeAllVisualNodesByKey(nodeKey: string) {
+  document.querySelectorAll(`.draggable-node[data-key="${nodeKey}"]`).forEach(node => {
+      node.remove();
+  });
+}
+
+resetNewNode() {
+  this.newNode = { name: '', x: 0, y: 0, height: 0, width: 0, fontSize:0, type: '' };
+  this.outputAvailable = true;
+  this.showOutputContainer();
+  this.showNodeDialog = false;
+  this.saveType = 'new';
+}
+
+formatNodeName(name: string) {
+    let formattedName = name?.toLowerCase()?.replace(/\s+/g, '_')?.replace(/[^a-z0-9_]/g, '');
+    return formattedName;
+}
+
+  cancelNewNode() {
+    this.showNodeDialog = false;
+    this.showDuplicateModal = false;
+  }
 }
