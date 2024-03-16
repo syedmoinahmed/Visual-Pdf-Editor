@@ -54,6 +54,10 @@ interface OutputFormat {
   node_override: NodeOverride;
 }
 
+interface NodesArrayOutput {
+  nodes: NodeDetails[];
+}
+
 interface ChildNode {
   type: string;
   fontSize: number;
@@ -223,6 +227,13 @@ interface newNode {
     <button (click)="copyToClipboard()" class="button-small">Copy To Clipboard</button>
     <button (click)="generateOutput(false)" class="button-small">All Nodes Config</button>
     <button (click)="toggleJoystickVisibility()"  class="button-small">{{ joystickVisible ? 'Hide' : 'Show' }} Control Panel</button>
+  </div>
+  <div class="radio-group-container" style="display: flex; align-items: center; gap: 10px; margin-top: 10px; margin-bottom: 10px;">
+  <span>Output Format: </span>
+    <label for="nodes">Nodes</label>
+    <input class="pr-5 mr-2" type="radio" id="nodes" name="outputFormat" value="nodes" [(ngModel)]="outputFormat" (change)="updateOutputFormat('nodes')" checked>
+    <label for="node_override">Node Override</label>
+    <input type="radio" id="node_override" name="outputFormat" value="node_override" [(ngModel)]="outputFormat" (change)="updateOutputFormat('node_override')">
   </div>
   <textarea #outputJson class="output-json" readonly></textarea>
 </div>
@@ -825,6 +836,8 @@ export class AppComponent implements AfterViewInit{
   tempNode: any={};
   showOnlyDuplicateFields = false;
   @ViewChild(ContextMenuComponent) contextMenuComponent!: ContextMenuComponent;
+  //outputFormat: 'node_override' | 'nodes'
+  outputFormat: 'nodes' | 'node_override' = 'nodes'; 
 
 constructor() {
     GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.mjs';
@@ -895,6 +908,11 @@ ngAfterViewInit(): void {
     }else{
       return 'Child';
     }
+  }
+
+  updateOutputFormat(format: 'nodes' | 'node_override') {
+    this.outputFormat = format;
+    this.generateOutput(true);
   }
 
   handleMenuAction(event: MenuActionEvent) {
@@ -1542,7 +1560,8 @@ selectNodeForJoystick(key: string, index: number | null, position: Position) {
 
 //OUTPUT:
 generateOutput(onlyEdited: boolean): void {
-  let output: OutputFormat = { node_override: {} };
+  let outputFormat = this.outputFormat;
+  let output: OutputFormat | NodesArrayOutput = outputFormat === 'node_override' ? { node_override: {} } : { nodes: [] };
 
   this.allNodes.forEach(node => {
     if (onlyEdited && !this.movedNodes.has(node.key)) return;
@@ -1574,11 +1593,15 @@ generateOutput(onlyEdited: boolean): void {
       nodeDetail.maxLines = node.maxLines;
     }
 
-    output.node_override[node.key] = nodeDetail;
+    if (outputFormat === 'node_override') {
+      (output as OutputFormat).node_override[node.key] = nodeDetail;
+    } else { // 'nodes'
+      (output as NodesArrayOutput).nodes.push(nodeDetail);
+    }
   });
 
-
-  Object.entries(output.node_override).forEach(([key, detail]) => {
+  if (outputFormat === 'node_override') {
+  Object.entries((output as OutputFormat).node_override).forEach(([key, detail]) => {
     console.log(key);
     if (detail.positions && detail.positions.length === 1 && detail.type !== 'multiple') {
       detail.position = detail.positions[0];
@@ -1587,6 +1610,17 @@ generateOutput(onlyEdited: boolean): void {
       delete detail.positions; 
     }
   });
+}else{
+  Object.entries((output as NodesArrayOutput).nodes).forEach(([key, detail]) => {
+    console.log(key);
+    if (detail.positions && detail.positions.length === 1 && detail.type !== 'multiple') {
+      detail.position = detail.positions[0];
+      delete detail.positions;
+    } else if (detail.positions && detail.positions.length === 0) {
+      delete detail.positions; 
+    }
+  });
+}
 
   this.outputJson.nativeElement.value = JSON.stringify(output, null, 2);
 };
